@@ -223,7 +223,7 @@ public class Push {
         }
     }
 
-    private void putValues(Bundle extras, int uid, String title, String message, String payload, long timestamp, int priority, int iconSmall, int iconLarge) {
+    private void putValues(Bundle extras, int uid, String title, String message, String payload, String layout, long timestamp, int priority, int iconSmall, int iconLarge) {
         extras.putInt("uid", uid);
         extras.putString("title", title);
         extras.putString("message", message);
@@ -232,6 +232,7 @@ public class Push {
         extras.putInt("smallIcon", iconSmall);
         extras.putInt("largeIcon", iconLarge);
         extras.putString("payload", payload);
+        extras.putString("layout", layout);
     }
 
     private Bundle loadLocalPushNotification(Context context, int uid) {
@@ -241,8 +242,8 @@ public class Push {
             return null;
         }
         Bundle extras = new Bundle();
-        putValues(extras, jo.optInt("uid"), jo.optString("title"), jo.optString("message"), jo.optString("payload"), jo.optLong("timestamp"),
-                    jo.optInt("priority"), jo.optInt("smallIcon"), jo.optInt("largeIcon"));
+        putValues(extras, jo.optInt("uid"), jo.optString("title"), jo.optString("message"), jo.optString("payload"), jo.optString("layout"),
+                    jo.optLong("timestamp"), jo.optInt("priority"), jo.optInt("smallIcon"), jo.optInt("largeIcon"));
         return extras;
     }
 
@@ -265,11 +266,11 @@ public class Push {
                 return;
             }
             this.listener.addPendingNotifications(jo.optInt("uid"), jo.optString("title"), jo.optString("message"), jo.optString("payload"),
-                                                jo.optLong("timestamp"), jo.optInt("priority"));
+                                                jo.optString("layout"), jo.optLong("timestamp"), jo.optInt("priority"));
         }
     }
 
-    public void scheduleNotification(final Activity activity, int uid, long timestampMillis, String title, String message, String payload, int priority) {
+    public void scheduleNotification(final Activity activity, int uid, long timestampMillis, String title, String message, String payload, String layout, int priority) {
 
         if (am == null) {
             am = (AlarmManager) activity.getSystemService(activity.ALARM_SERVICE);
@@ -279,7 +280,7 @@ public class Push {
         Bundle extras = new Bundle();
         int iconSmall = activity.getResources().getIdentifier("push_icon_small", "drawable", activity.getPackageName());
         int iconLarge = activity.getResources().getIdentifier("push_icon_large", "drawable", activity.getPackageName());
-        putValues(extras, uid, title, message, payload, timestampMillis, priority, iconSmall, iconLarge);
+        putValues(extras, uid, title, message, payload, layout, timestampMillis, priority, iconSmall, iconLarge);
 
         storeLocalPushNotification(activity, uid, extras);
 
@@ -290,7 +291,7 @@ public class Push {
         am.set(AlarmManager.RTC_WAKEUP, timestampMillis, pendingIntent);
     }
 
-    public void cancelNotification(final Activity activity, int notificationId, String title, String message, String payload, int priority)
+    public void cancelNotification(final Activity activity, int notificationId)
     {
         if (am == null) {
             am = (AlarmManager) activity.getSystemService(activity.ALARM_SERVICE);
@@ -302,18 +303,8 @@ public class Push {
 
         removeNotification(notificationId);
 
-        Bundle extras = new Bundle();
-        int uid = notificationId;
-        extras.putInt("uid", uid);
-        extras.putString("title", title);
-        extras.putString("message", message);
-        extras.putInt("priority", priority);
-        extras.putString("payload", payload);
-        // NOTE: the extras is redundant. <-- remove extras and verify
-
         Intent intent = new Intent(activity, LocalNotificationReceiver.class);
-        intent.putExtras(extras);
-        intent.setAction("uid" + uid);
+        intent.setAction("uid" + notificationId);
         PendingIntent pendingIntent = PendingIntent.getBroadcast(activity, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_ONE_SHOT);
         am.cancel(pendingIntent);
     }
@@ -654,6 +645,11 @@ public class Push {
 
         builder.setSmallIcon(smallIconId);
         builder.setContentIntent(contentIntent);
+
+        JSONObject layoutJson = payloadJson.optJSONObject("layout");
+        if (layoutJson != null) {
+            RichNotificationUtils.setCustomLayout(context, builder, layoutJson, title, text);
+        }
 
         NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         Notification notification = builder.build();

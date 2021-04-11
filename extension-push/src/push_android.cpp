@@ -26,6 +26,7 @@ struct ScheduledNotification
     char* title;
     char* message;
     char* payload;
+    char* layout;
     int priority;
 };
 
@@ -120,6 +121,7 @@ static int Push_Schedule(lua_State* L)
 
     // param: notification_settings
     int priority = 2;
+    const char* layout = "";
     // char* icon = 0;
     // char* sound = 0;
     if (top > 4) {
@@ -139,6 +141,23 @@ static int Push_Schedule(lua_State* L)
         }
         lua_pop(L, 1);
 
+        // layout
+        lua_pushstring(L, "layout");
+        lua_gettable(L, 5);
+        if (lua_isstring(L, -1)) {
+            layout = luaL_checkstring(L, -1);
+        }
+        lua_pop(L, 1);
+
+        if (strlen(layout) > 0) {
+            // Verify that the layout is valid json.
+            char layout_err[128];
+            if (!dmPush::VerifyPayload(L, layout, layout_err, sizeof(layout_err))) {
+                lua_pushnil(L);
+                lua_pushstring(L, layout_err);
+                return 2;
+            }
+        }
         /*
 
         // icon
@@ -178,6 +197,7 @@ static int Push_Schedule(lua_State* L)
     sn.title     = strdup(title);
     sn.message   = strdup(message);
     sn.payload   = strdup(payload);
+    sn.layout    = strdup(layout);
     sn.priority  = priority;
     if (g_Push.m_ScheduledNotifications.Remaining() == 0) {
         g_Push.m_ScheduledNotifications.SetCapacity(g_Push.m_ScheduledNotifications.Capacity()*2);
@@ -188,7 +208,9 @@ static int Push_Schedule(lua_State* L)
     jstring jtitle   = env->NewStringUTF(sn.title);
     jstring jmessage = env->NewStringUTF(sn.message);
     jstring jpayload = env->NewStringUTF(sn.payload);
-    env->CallVoidMethod(g_Push.m_Push, g_Push.m_Schedule, dmGraphics::GetNativeAndroidActivity(), sn.id, sn.timestamp / 1000, jtitle, jmessage, jpayload, sn.priority);
+    jstring jlayout  = env->NewStringUTF(sn.layout);
+    env->CallVoidMethod(g_Push.m_Push, g_Push.m_Schedule, dmGraphics::GetNativeAndroidActivity(), sn.id, sn.timestamp / 1000, jtitle, jmessage, jpayload, jlayout, sn.priority);
+    env->DeleteLocalRef(jlayout);
     env->DeleteLocalRef(jpayload);
     env->DeleteLocalRef(jmessage);
     env->DeleteLocalRef(jtitle);
@@ -221,6 +243,10 @@ static void RemoveNotification(int id)
                 free(sn.payload);
             }
 
+            if (sn.layout) {
+                free(sn.layout);
+            }
+
             g_Push.m_ScheduledNotifications.EraseSwap(i);
             break;
         }
@@ -239,13 +265,7 @@ static int Push_Cancel(lua_State* L)
         if (sn.id == cancel_id)
         {
             JNIEnv* env = Attach();
-            jstring jtitle   = env->NewStringUTF(sn.title);
-            jstring jmessage = env->NewStringUTF(sn.message);
-            jstring jpayload = env->NewStringUTF(sn.payload);
-            env->CallVoidMethod(g_Push.m_Push, g_Push.m_Cancel, dmGraphics::GetNativeAndroidActivity(), sn.id, jtitle, jmessage, jpayload, sn.priority);
-            env->DeleteLocalRef(jpayload);
-            env->DeleteLocalRef(jmessage);
-            env->DeleteLocalRef(jtitle);
+            env->CallVoidMethod(g_Push.m_Push, g_Push.m_Cancel, dmGraphics::GetNativeAndroidActivity(), sn.id);
             Detach();
 
             RemoveNotification(cancel_id);
@@ -274,6 +294,10 @@ static void NotificationToLua(lua_State* L, ScheduledNotification notification)
 
     lua_pushstring(L, "payload");
     lua_pushstring(L, notification.payload);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "layout");
+    lua_pushstring(L, notification.layout);
     lua_settable(L, -3);
 
     lua_pushstring(L, "priority");
@@ -356,7 +380,7 @@ static const luaL_reg Push_methods[] =
 extern "C" {
 #endif
 
-JNIEXPORT void JNICALL Java_com_defold_push_PushJNI_addPendingNotifications(JNIEnv* env, jobject, jint uid, jstring title, jstring message, jstring payload, jlong timestampMillis, jint priority)
+JNIEXPORT void JNICALL Java_com_defold_push_PushJNI_addPendingNotifications(JNIEnv* env, jobject, jint uid, jstring title, jstring message, jstring payload, jstring layout, jlong timestampMillis, jint priority)
 {
     uint64_t cur_time = dmTime::GetTime();
     uint64_t timestamp = 1000 * (uint64_t)timestampMillis;
@@ -367,6 +391,7 @@ JNIEXPORT void JNICALL Java_com_defold_push_PushJNI_addPendingNotifications(JNIE
     const char* c_title = "";
     const char* c_message = "";
     const char* c_payload = "";
+    const char* c_layout = "";
     if (title) {
         c_title = env->GetStringUTFChars(title, 0);
     }
@@ -376,6 +401,9 @@ JNIEXPORT void JNICALL Java_com_defold_push_PushJNI_addPendingNotifications(JNIE
     if (payload) {
         c_payload = env->GetStringUTFChars(payload, 0);
     }
+    if (layout) {
+        c_layout = env->GetStringUTFChars(layout, 0);
+    }
 
     ScheduledNotification sn;
     sn.id        = (uint64_t)uid;
@@ -383,6 +411,7 @@ JNIEXPORT void JNICALL Java_com_defold_push_PushJNI_addPendingNotifications(JNIE
     sn.title     = strdup(c_title);
     sn.message   = strdup(c_message);
     sn.payload   = strdup(c_payload);
+    sn.layout    = strdup(c_layout);
     sn.priority  = (int)priority;
 
     if (g_Push.m_ScheduledNotifications.Remaining() == 0) {
@@ -399,6 +428,9 @@ JNIEXPORT void JNICALL Java_com_defold_push_PushJNI_addPendingNotifications(JNIE
     }
     if (c_payload) {
         env->ReleaseStringUTFChars(payload, c_payload);
+    }
+    if (c_layout) {
+        env->ReleaseStringUTFChars(layout, c_layout);
     }
 }
 
@@ -506,8 +538,8 @@ static dmExtension::Result AppInitializePush(dmExtension::AppParams* params)
     g_Push.m_Stop = env->GetMethodID(push_class, "stop", "()V");
     g_Push.m_FlushStored = env->GetMethodID(push_class, "flushStoredNotifications", "()V");
     g_Push.m_Register = env->GetMethodID(push_class, "register", "(Landroid/app/Activity;)V");
-    g_Push.m_Schedule = env->GetMethodID(push_class, "scheduleNotification", "(Landroid/app/Activity;IJLjava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V");
-    g_Push.m_Cancel = env->GetMethodID(push_class, "cancelNotification", "(Landroid/app/Activity;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V");
+    g_Push.m_Schedule = env->GetMethodID(push_class, "scheduleNotification", "(Landroid/app/Activity;IJLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V");
+    g_Push.m_Cancel = env->GetMethodID(push_class, "cancelNotification", "(Landroid/app/Activity;I)V");
 
     jmethodID get_instance_method = env->GetStaticMethodID(push_class, "getInstance", "()Lcom/defold/push/Push;");
     g_Push.m_Push = env->NewGlobalRef(env->CallStaticObjectMethod(push_class, get_instance_method));

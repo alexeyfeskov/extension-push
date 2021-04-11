@@ -17,6 +17,8 @@ import android.os.Bundle;
 import android.util.Log;
 import android.R;
 
+import org.json.JSONObject;
+
 public class LocalNotificationReceiver extends WakefulBroadcastReceiver {
 
     NotificationManager nm;
@@ -49,10 +51,12 @@ public class LocalNotificationReceiver extends WakefulBroadcastReceiver {
                 PendingIntent contentIntent = PendingIntent.getActivity(context, id, new_intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_ONE_SHOT);
 
                 ApplicationInfo info = context.getApplicationInfo();
+                String title = extras.getString("title");
+                String text = extras.getString("message");
 
                 NotificationCompat.Builder builder = new NotificationCompat.Builder(context, Push.NOTIFICATION_CHANNEL_ID)
-                    .setContentTitle(extras.getString("title"))
-                    .setContentText(extras.getString("message"))
+                    .setContentTitle(title)
+                    .setContentText(text)
                     .setWhen(System.currentTimeMillis())
                     .setContentIntent(contentIntent)
                     .setPriority(extras.getInt("priority"));
@@ -80,6 +84,11 @@ public class LocalNotificationReceiver extends WakefulBroadcastReceiver {
 
                 builder.setSmallIcon(smallIconId);
                 builder.setLargeIcon(largeIconBitmap);
+
+                JSONObject layoutJson = RichNotificationUtils.getLayoutJson(extras);
+                if (layoutJson != null) {
+                    RichNotificationUtils.setCustomLayout(context, builder, layoutJson, title, text);
+                }
 
                 Notification notification = builder.build();
                 notification.defaults = Notification.DEFAULT_ALL;

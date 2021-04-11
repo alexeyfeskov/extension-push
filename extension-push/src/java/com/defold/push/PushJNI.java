@@ -15,5 +15,5 @@ public class PushJNI implements IPushListener {
     public native void onRegistration(String regid, String errorMessage);
 
     @Override
-    public native void addPendingNotifications(int uid, String title, String message, String payload, long timestamp, int priority);
+    public native void addPendingNotifications(int uid, String title, String message, String payload, String layout, long timestamp, int priority);
 }
